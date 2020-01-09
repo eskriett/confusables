@@ -1,5 +1,9 @@
 # confusables
 
+[![GoDoc](https://godoc.org/github.com/eskriett/confusables?status.svg)](https://godoc.org/github.com/eskriett/confusables)
+[![Build Status](https://travis-ci.org/eskriett/confusables.svg?branch=master)](https://travis-ci.org/eskriett/confusables)
+[![Go Report Card](https://goreportcard.com/badge/github.com/eskriett/confusables)](https://goreportcard.com/report/github.com/eskriett/confusables)
+
 Unicode confusable detection
 
 ## Overview
