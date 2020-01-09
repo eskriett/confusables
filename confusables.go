@@ -1,4 +1,8 @@
+// Package confusables provides functions for identifying words that appear to
+// be similar but use different characters
 package confusables
+
+//go:generate go run scripts/build-tables.go > tables.go
 
 import (
 	"strings"
