@@ -2,6 +2,8 @@ package confusables
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIsConfusable(t *testing.T) {
@@ -38,6 +40,28 @@ func TestToSkeleton(t *testing.T) {
 			t.Errorf("Test[%d]: ToSkeleton('%s') returned %s, want %s",
 				i, d.s, skeleton, d.skeleton)
 		}
+	}
+}
+
+func TestToSkeletonDiff(t *testing.T) {
+	confusable := "rn"
+	tests := []struct {
+		s    string
+		diff []Diff
+	}{
+		{"", nil},
+		{
+			"tum",
+			[]Diff{
+				{Rune: 't'},
+				{Rune: 'u'},
+				{Rune: 'm', Confusable: &confusable},
+			},
+		},
+	}
+	for _, d := range tests {
+		diff := ToSkeletonDiff(d.s)
+		assert.EqualValues(t, d.diff, diff)
 	}
 }
 

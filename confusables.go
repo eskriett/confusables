@@ -31,3 +31,29 @@ func ToSkeleton(s string) string {
 
 	return skeleton.String()
 }
+
+// Diff details the mapping from a rune to its confusable if it exists
+type Diff struct {
+	Rune       rune
+	Confusable *string
+}
+
+// ToSkeletonDiff returns a slice of Diff detailing the changes that have been
+// made within the string to reach its skeleton form
+func ToSkeletonDiff(s string) []Diff {
+	nfd := norm.NFD.String(s)
+
+	var diffs []Diff
+	for _, r := range nfd {
+		var confusable *string
+		if c, ok := confusables[r]; ok {
+			confusable = &c
+		}
+		diffs = append(diffs, Diff{
+			Rune:       r,
+			Confusable: confusable,
+		})
+	}
+
+	return diffs
+}
