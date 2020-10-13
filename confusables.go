@@ -1,26 +1,65 @@
 // Package confusables provides functions for identifying words that appear to
-// be similar but use different characters
+// be similar but use different characters.
 package confusables
 
 //go:generate go run scripts/build-tables.go > tables.go
 
 import (
 	"strings"
+	"unicode"
 
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 )
 
-// IsConfusable checks if two strings are confusable of one another
+// nolint:gochecknoglobals
+var removeMarks = transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+
+// AddMapping allows custom mappings to be defined for a rune.
+func AddMapping(r rune, s string) {
+	confusables[r] = s
+}
+
+// IsConfusable checks if two strings are confusable of one another.
 func IsConfusable(s1, s2 string) bool {
 	return ToSkeleton(s1) == ToSkeleton(s2)
 }
 
+// ToASCII converts characters in a string to their ASCII equivalent if possible.
+func ToASCII(s string) string {
+	if isASCII(s) {
+		return s
+	}
+
+	var ascii strings.Builder
+
+	for _, r := range s {
+		if r > unicode.MaxASCII {
+			if c, ok := confusables[r]; ok {
+				s, _, _ := transform.String(removeMarks, c)
+
+				if isASCII(s) {
+					ascii.WriteString(s)
+
+					continue
+				}
+			}
+		}
+
+		ascii.WriteRune(r)
+	}
+
+	return ascii.String()
+}
+
 // ToSkeleton converts a string to its skeleton form as defined by the skeleton
-// algorithm in https://www.unicode.org/reports/tr39/#def-skeleton
+// algorithm in https://www.unicode.org/reports/tr39/#def-skeleton.
 func ToSkeleton(s string) string {
 	nfd := norm.NFD.String(s)
 
 	var skeleton strings.Builder
+
 	for _, r := range nfd {
 		if c, ok := confusables[r]; ok {
 			skeleton.WriteString(c)
@@ -32,28 +71,44 @@ func ToSkeleton(s string) string {
 	return skeleton.String()
 }
 
-// Diff details the mapping from a rune to its confusable if it exists
+// Diff details the mapping from a rune to its confusable if it exists.
 type Diff struct {
 	Rune       rune
 	Confusable *string
 }
 
 // ToSkeletonDiff returns a slice of Diff detailing the changes that have been
-// made within the string to reach its skeleton form
+// made within the string to reach its skeleton form.
 func ToSkeletonDiff(s string) []Diff {
 	nfd := norm.NFD.String(s)
 
-	var diffs []Diff
-	for _, r := range nfd {
+	if len(nfd) == 0 {
+		return nil
+	}
+
+	diffs := make([]Diff, len(nfd))
+
+	for i, r := range nfd {
 		var confusable *string
 		if c, ok := confusables[r]; ok {
 			confusable = &c
 		}
-		diffs = append(diffs, Diff{
+
+		diffs[i] = Diff{
 			Rune:       r,
 			Confusable: confusable,
-		})
+		}
 	}
 
 	return diffs
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > unicode.MaxASCII {
+			return false
+		}
+	}
+
+	return true
 }

@@ -1,9 +1,9 @@
 package confusables_test
 
 import (
-	"github.com/eskriett/confusables"
 	"testing"
 
+	"github.com/eskriett/confusables"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,6 +24,25 @@ func TestIsConfusable(t *testing.T) {
 			t.Errorf("Test[%d]: IsConfusable('%s','%s') returned %t, want %t",
 				i, d.s1, d.s2, isConfuse, d.isConfusable)
 		}
+	}
+}
+
+func TestToASCII(t *testing.T) {
+	tests := []struct {
+		confusable, ascii string
+	}{
+		{"example", "example"},
+		{"exαʍple", "example"},
+		{"exαʍple", "example"},
+		{"ɼecoɼd", "record"},
+		{"exȧmple", "example"},
+	}
+
+	// Allow custom mappings to be defined
+	confusables.AddMapping('ʍ', "m")
+
+	for _, test := range tests {
+		assert.Equal(t, test.ascii, confusables.ToASCII(test.confusable))
 	}
 }
 
@@ -64,6 +83,14 @@ func TestToSkeletonDiff(t *testing.T) {
 		diff := confusables.ToSkeletonDiff(d.s)
 		assert.EqualValues(t, d.diff, diff)
 	}
+}
+
+func BenchmarkToASCII(b *testing.B) {
+	b.Run("ToASCII", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			confusables.ToASCII("𝐞х⍺𝓂𝕡Іꬲ")
+		}
+	})
 }
 
 func BenchmarkToSkeleton(b *testing.B) {
