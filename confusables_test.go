@@ -7,6 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestNew(t *testing.T) {
+	c := confusables.New()
+
+	assert.IsType(t, &confusables.Confusables{}, c)
+}
+
 func TestIsConfusable(t *testing.T) {
 	tests := []struct {
 		s1, s2       string
@@ -31,6 +37,7 @@ func TestToASCII(t *testing.T) {
 	tests := []struct {
 		confusable, ascii string
 	}{
+		{"", ""},
 		{"example", "example"},
 		{"exαʍple", "example"},
 		{"exαʍple", "example"},

@@ -13,8 +13,55 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// nolint:gochecknoglobals
-var removeMarks = transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+// Confusables provides functions for identifying words that appear to be similar but use different characters.
+type Confusables struct {
+	removeMarks transform.Transformer
+}
+
+// New creates a new instance of Confusables.
+func New() *Confusables {
+	return &Confusables{
+		removeMarks: transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC),
+	}
+}
+
+// ToASCII converts characters in a string to their ASCII equivalent if possible.
+func (c *Confusables) ToASCII(s string) string {
+	if isASCII(s) {
+		return s
+	}
+
+	var ascii strings.Builder
+
+	for _, r := range s {
+		if r > unicode.MaxASCII {
+			if v, ok := confusables[r]; ok {
+				c.removeMarks.Reset()
+
+				v, _, _ := transform.String(c.removeMarks, v)
+
+				if isASCII(v) {
+					ascii.WriteString(v)
+
+					continue
+				}
+			}
+
+			c.removeMarks.Reset()
+
+			v, _, _ := transform.String(c.removeMarks, string(r))
+			if isASCII(v) {
+				ascii.WriteString(v)
+
+				continue
+			}
+		}
+
+		ascii.WriteRune(r)
+	}
+
+	return ascii.String()
+}
 
 // AddMapping allows custom mappings to be defined for a rune.
 func AddMapping(r rune, s string) {
@@ -28,36 +75,7 @@ func IsConfusable(s1, s2 string) bool {
 
 // ToASCII converts characters in a string to their ASCII equivalent if possible.
 func ToASCII(s string) string {
-	if isASCII(s) {
-		return s
-	}
-
-	var ascii strings.Builder
-
-	for _, r := range s {
-		if r > unicode.MaxASCII {
-			if c, ok := confusables[r]; ok {
-				c, _, _ := transform.String(removeMarks, c)
-
-				if isASCII(c) {
-					ascii.WriteString(c)
-
-					continue
-				}
-			}
-
-			c, _, _ := transform.String(removeMarks, string(r))
-			if isASCII(c) {
-				ascii.WriteString(c)
-				
-				continue
-			}
-		}
-
-		ascii.WriteRune(r)
-	}
-
-	return ascii.String()
+	return New().ToASCII(s)
 }
 
 // ToSkeleton converts a string to its skeleton form as defined by the skeleton
