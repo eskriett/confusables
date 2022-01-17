@@ -37,13 +37,20 @@ func ToASCII(s string) string {
 	for _, r := range s {
 		if r > unicode.MaxASCII {
 			if c, ok := confusables[r]; ok {
-				s, _, _ := transform.String(removeMarks, c)
+				c, _, _ := transform.String(removeMarks, c)
 
-				if isASCII(s) {
-					ascii.WriteString(s)
+				if isASCII(c) {
+					ascii.WriteString(c)
 
 					continue
 				}
+			}
+
+			c, _, _ := transform.String(removeMarks, string(r))
+			if isASCII(c) {
+				ascii.WriteString(c)
+				
+				continue
 			}
 		}
 

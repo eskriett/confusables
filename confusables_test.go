@@ -36,6 +36,7 @@ func TestToASCII(t *testing.T) {
 		{"exαʍple", "example"},
 		{"ɼecoɼd", "record"},
 		{"exȧmple", "example"},
+		{"newtòñ", "newton"},
 	}
 
 	// Allow custom mappings to be defined
