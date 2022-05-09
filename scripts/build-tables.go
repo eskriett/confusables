@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,7 +12,13 @@ import (
 	"text/template"
 )
 
-const url = "https://www.unicode.org/Public/security/latest/confusables.txt"
+var errDownload = errors.New("unable to download confusables")
+
+const (
+	base    = 16
+	bitsize = 64
+	url     = "https://www.unicode.org/Public/security/latest/confusables.txt"
+)
 
 const sourceFile = `package confusables
 
@@ -25,20 +32,28 @@ var confusables = map[rune]string{
 `
 
 func main() {
-	// Download the file
+	if err := buildTable(); err != nil {
+		log.Fatal("unable to build tables")
+	}
+}
+
+func buildTable() error {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("No successful response for %s", url)
+		return errDownload
 	}
+
+	var confusables []string
 
 	// Extract confusables from downloaded file
 	scanner := bufio.NewScanner(resp.Body)
-	var confusables []string
+
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -59,27 +74,33 @@ func main() {
 
 	// Output a mapping file
 	tmpl := template.New("tables.go")
+
 	tmpl, err = tmpl.Parse(sourceFile)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("unable to parse template: %w", err)
 	}
 
 	f, err := os.Create("tables.go")
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("unable to create tables.go: %w", err)
 	}
+
 	defer f.Close()
 
-	err = tmpl.Execute(f, confusables)
-	if err != nil {
-		log.Fatal(err)
+	if err := tmpl.Execute(f, confusables); err != nil {
+		return fmt.Errorf("unable to execute template: %w", err)
 	}
+
+	return nil
 }
 
 func codePointToString(s string) []rune {
-	var runes []rune
-	for _, unicodeCodePoint := range strings.Split(s, " ") {
-		codePoint, err := strconv.ParseUint(unicodeCodePoint, 16, 64)
+	codePoints := strings.Split(s, " ")
+
+	runes := make([]rune, 0, len(codePoints))
+
+	for _, unicodeCodePoint := range codePoints {
+		codePoint, err := strconv.ParseUint(unicodeCodePoint, base, bitsize)
 		if err != nil {
 			log.Fatal(err)
 		}

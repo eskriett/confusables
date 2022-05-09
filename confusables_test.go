@@ -8,12 +8,16 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	c := confusables.New()
 
 	assert.IsType(t, &confusables.Confusables{}, c)
 }
 
 func TestIsConfusable(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		s1, s2       string
 		isConfusable bool
@@ -24,6 +28,7 @@ func TestIsConfusable(t *testing.T) {
 		{"example", "𝐞х⍺𝓂𝕡І", false},
 		{"example", "𝐞х⍺𝓂𝕡Іe", true},
 	}
+
 	for i, d := range tests {
 		isConfuse := confusables.IsConfusable(d.s1, d.s2)
 		if isConfuse != d.isConfusable {
@@ -34,6 +39,8 @@ func TestIsConfusable(t *testing.T) {
 }
 
 func TestToASCII(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		confusable, ascii string
 	}{
@@ -55,6 +62,8 @@ func TestToASCII(t *testing.T) {
 }
 
 func TestToSkeleton(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		s, skeleton string
 	}{
@@ -62,6 +71,7 @@ func TestToSkeleton(t *testing.T) {
 		{"example", "exarnple"},
 		{"𝐞х⍺𝓂𝕡Іꬲ", "exarnple"},
 	}
+
 	for i, d := range tests {
 		skeleton := confusables.ToSkeleton(d.s)
 		if skeleton != d.skeleton {
@@ -72,7 +82,10 @@ func TestToSkeleton(t *testing.T) {
 }
 
 func TestToSkeletonDiff(t *testing.T) {
+	t.Parallel()
+
 	confusable := "rn"
+
 	tests := []struct {
 		s    string
 		diff []confusables.Diff
@@ -87,6 +100,7 @@ func TestToSkeletonDiff(t *testing.T) {
 			},
 		},
 	}
+
 	for _, d := range tests {
 		diff := confusables.ToSkeletonDiff(d.s)
 		assert.EqualValues(t, d.diff, diff)
