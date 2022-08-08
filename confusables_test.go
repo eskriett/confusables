@@ -24,6 +24,7 @@ func TestIsConfusable(t *testing.T) {
 	}{
 		{"", "", true},
 		{"", "testing", false},
+		{"Ａ", "Α", true},
 		{"example", "𝐞х⍺𝓂𝕡Іꬲ", true},
 		{"example", "𝐞х⍺𝓂𝕡І", false},
 		{"example", "𝐞х⍺𝓂𝕡Іe", true},
@@ -68,10 +69,53 @@ func TestToASCII(t *testing.T) {
 	}
 
 	// Allow custom mappings to be defined
-	confusables.AddMapping('ʍ', "m")
+	confusables.AddMappingWithDesc('ʍ', "m",
+		"LATIN SMALL LETTER TURNED W", "LATIN SMALL LETTER M")
 
 	for _, test := range tests {
 		assert.Equal(t, test.ascii, confusables.ToASCII(test.confusable))
+	}
+}
+
+func TestToASCIIDiff(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		confusable, ascii string
+		diff              []confusables.Diff
+	}{
+		{"", "", []confusables.Diff{}},
+		{"tòñ", "ton", []confusables.Diff{
+			{
+				Confusable:  nil,
+				Description: "",
+				Rune:        't',
+			},
+			{
+				Confusable:  strPtr("o"),
+				Description: "LATIN SMALL LETTER O, COMBINING GRAVE ACCENT → LATIN SMALL LETTER O",
+				Rune:        'ò',
+			},
+			{
+				Confusable:  strPtr("n"),
+				Description: "LATIN SMALL LETTER N, COMBINING TILDE → LATIN SMALL LETTER N",
+				Rune:        'ñ',
+			},
+		}},
+		{"❶", "1", []confusables.Diff{
+			{
+				Confusable:  strPtr("1"),
+				Description: "DINGBAT NEGATIVE CIRCLED DIGIT ONE → DIGIT ONE",
+				Rune:        '❶',
+			},
+		}},
+	}
+
+	for _, test := range tests {
+		ascii, diff := confusables.ToASCIIDiff(test.confusable)
+
+		assert.Equal(t, test.ascii, ascii)
+		assert.EqualValues(t, test.diff, diff)
 	}
 }
 
@@ -117,8 +161,6 @@ func TestToSkeleton(t *testing.T) {
 func TestToSkeletonDiff(t *testing.T) {
 	t.Parallel()
 
-	confusable := "rn"
-
 	tests := []struct {
 		s    string
 		diff []confusables.Diff
@@ -129,7 +171,11 @@ func TestToSkeletonDiff(t *testing.T) {
 			[]confusables.Diff{
 				{Rune: 't'},
 				{Rune: 'u'},
-				{Rune: 'm', Confusable: &confusable},
+				{
+					Confusable:  strPtr("rn"),
+					Description: "LATIN SMALL LETTER M → LATIN SMALL LETTER R, LATIN SMALL LETTER N",
+					Rune:        'm',
+				},
 			},
 		},
 	}
@@ -162,4 +208,8 @@ func BenchmarkIsConfusable(b *testing.B) {
 			confusables.IsConfusable("example", "𝐞х⍺𝓂𝕡Іꬲ")
 		}
 	})
+}
+
+func strPtr(s string) *string {
+	return &s
 }

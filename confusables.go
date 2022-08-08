@@ -5,6 +5,7 @@ package confusables
 //go:generate go run scripts/build-tables.go > tables.go
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -27,49 +28,84 @@ func New() *Confusables {
 
 // ToASCII converts characters in a string to their ASCII equivalent if possible.
 func (c *Confusables) ToASCII(s string) string {
+	a, _ := c.toASCII(s)
+
+	return a
+}
+
+func (c *Confusables) ToASCIIDiff(s string) (string, []Diff) {
+	return c.toASCII(s)
+}
+
+func noDiff(s string) []Diff {
+	diff := make([]Diff, len(s))
+
+	for i, r := range s {
+		diff[i] = Diff{
+			Rune: r,
+		}
+	}
+
+	return diff
+}
+
+func (c *Confusables) toASCII(s string) (string, []Diff) {
 	if isASCII(s) {
-		return s
+		return s, noDiff(s)
 	}
 
 	var ascii strings.Builder
 
+	diffs := make([]Diff, 0, len(s))
+
 	for _, r := range s {
-		if num := handleNumber(r); num != "" {
-			ascii.WriteString(num)
+		diff := c.processRune(r)
+		diffs = append(diffs, *diff)
 
-			continue
+		if diff.Confusable != nil {
+			ascii.WriteString(*diff.Confusable)
+		} else {
+			ascii.WriteRune(r)
 		}
-
-		if r > unicode.MaxASCII {
-			if v, ok := confusables[r]; ok {
-				c.removeMarks.Reset()
-
-				v, _, _ := transform.String(c.removeMarks, v)
-
-				if isASCII(v) {
-					ascii.WriteString(v)
-
-					continue
-				}
-			}
-
-			c.removeMarks.Reset()
-
-			v, _, _ := transform.String(c.removeMarks, string(r))
-			if isASCII(v) {
-				ascii.WriteString(v)
-
-				continue
-			}
-		}
-
-		ascii.WriteRune(r)
 	}
 
-	return norm.NFKC.String(ascii.String())
+	return norm.NFKC.String(ascii.String()), diffs
 }
 
-// ToNumber converts a string to a number.
+func (c *Confusables) processRune(r rune) *Diff {
+	diff := &Diff{}
+
+	diff.Rune = r
+
+	if r <= unicode.MaxASCII {
+		return diff
+	}
+
+	if v, ok := confusables[r]; ok {
+		c.removeMarks.Reset()
+
+		v, _, _ := transform.String(c.removeMarks, v)
+
+		if isASCII(v) {
+			diff.Confusable = &v
+			diff.Description = getDescriptionMapping(r, &v)
+
+			return diff
+		}
+	}
+
+	c.removeMarks.Reset()
+
+	v, _, _ := transform.String(c.removeMarks, string(r))
+	if isASCII(v) {
+		diff.Confusable = &v
+		diff.Description = getDescriptionMapping(r, &v)
+	}
+
+	return diff
+}
+
+// ToNumber converts characters in a string that look like numbers into numbers.
 func (c *Confusables) ToNumber(s string) string {
 	s = c.ToASCII(s)
 
@@ -90,8 +126,16 @@ func (c *Confusables) ToNumber(s string) string {
 }
 
 // AddMapping allows custom mappings to be defined for a rune.
-func AddMapping(r rune, s string) {
-	confusables[r] = s
+func AddMapping(r rune, confusable string) {
+	confusables[r] = confusable
+}
+
+// AddMappingWithDesc allows a custom mapping to be defined between a rune and its confusable and for a description to
+// be provided for that mapping.
+func AddMappingWithDesc(r rune, confusable, runeDesc, confusableDesc string) {
+	AddMapping(r, confusable)
+
+	descriptions[runeDesc] = confusableDesc
 }
 
 // IsConfusable checks if two strings are confusable of one another.
@@ -102,6 +146,11 @@ func IsConfusable(s1, s2 string) bool {
 // ToASCII converts characters in a string to their ASCII equivalent if possible.
 func ToASCII(s string) string {
 	return New().ToASCII(s)
+}
+
+// ToASCIIDiff converts characters in a string to their ASCII equivalent if possible.
+func ToASCIIDiff(s string) (string, []Diff) {
+	return New().ToASCIIDiff(s)
 }
 
 // ToNumber converts characters in a string to their numeric values if possible.
@@ -129,8 +178,9 @@ func ToSkeleton(s string) string {
 
 // Diff details the mapping from a rune to its confusable if it exists.
 type Diff struct {
-	Rune       rune
-	Confusable *string
+	Confusable  *string
+	Description string
+	Rune        rune
 }
 
 // ToSkeletonDiff returns a slice of Diff detailing the changes that have been
@@ -151,80 +201,44 @@ func ToSkeletonDiff(s string) []Diff {
 		}
 
 		diffs[i] = Diff{
-			Rune:       r,
-			Confusable: confusable,
+			Confusable:  confusable,
+			Description: getDescriptionMapping(r, confusable),
+			Rune:        r,
 		}
 	}
 
 	return diffs
 }
 
-func handleNumber(r rune) string {
-	switch {
-	// Dingbat Negative Circled
-	case r >= '❶' && r <= '❾':
-		r -= '❶' - '1'
-	// Dingbat Circled Sans-Serif
-	case r >= '➀' && r <= '➈':
-		r -= '➀' - '1'
-	case r == '🄋':
-		r = '0'
-	// Dingbat Negative Circled Sans-Serif
-	case r >= '➊' && r <= '➒':
-		r -= '➊' - '1'
-	case r == '🄌':
-		r = '0'
-	// Parenthesized
-	case r >= '⑴' && r <= '⑼':
-		r -= '⑴' - '1'
-	case r >= '⑽' && r <= '⒆':
-		r -= '⑾' - '1'
-
-		return "1" + string(r)
-	// Full Stop
-	case r >= '⒈' && r <= '⒐':
-		r -= '⒈' - '1'
-	case r >= '⒑' && r <= '⒚':
-		r -= '⒒' - '1'
-
-		return "1" + string(r)
-	case r == '🄀':
-		r = '0'
-	// Negative Circled
-	case r >= '⓫' && r <= '⓳':
-		r -= '⓫' - '1'
-
-		return "1" + string(r)
-	case r == '⓿':
-		r = '0'
-	// Double Circled
-	case r >= '⓵' && r <= '⓽':
-		r -= '⓵' - '1'
-	// Mathematical Bold
-	case r >= '𝟎' && r <= '𝟗':
-		r -= '𝟏' - '1'
-	// Mathematical Double-struck
-	case r >= '𝟘' && r <= '𝟡':
-		r -= '𝟙' - '1'
-	// Mathematical Sans-serif
-	case r >= '𝟢' && r <= '𝟫':
-		r -= '𝟣' - '1'
-	// Mathematical Sans-serif bold
-	case r >= '𝟬' && r <= '𝟵':
-		r -= '𝟭' - '1'
-	// Mathematical Monospace
-	case r >= '𝟶' && r <= '𝟿':
-		r -= '𝟷' - '1'
-	// Double digits various character classes
-	case r == '❿', r == '➉', r == '➓', r == '⓾':
-		return "10"
-	case r == '⒇', r == '⒛', r == '⓴':
-		return "20"
-	default:
+// Get the mapping between a rune and its confusable.
+func getDescriptionMapping(r rune, confusable *string) string {
+	if confusable == nil {
 		return ""
 	}
 
-	return string(r)
+	rDesc := descriptions[string(r)]
+	if rDesc == "" {
+		nfd := norm.NFD.String(string(r))
+		parts := make([]string, 0, len(nfd))
+
+		for _, c := range nfd {
+			cDesc := descriptions[string(c)]
+			if cDesc == "" {
+				return ""
+			}
+
+			parts = append(parts, cDesc)
+		}
+
+		rDesc = strings.Join(parts, ", ")
+	}
+
+	confusableDesc := descriptions[*confusable]
+	if confusableDesc == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s → %s", rDesc, confusableDesc)
 }
 
 func isASCII(s string) bool {
