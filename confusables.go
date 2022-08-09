@@ -68,39 +68,24 @@ func (c *Confusables) ToASCIIDiff(s string) (string, []Diff) {
 	return c.toASCII(s)
 }
 
-func noDiff(s string) []Diff {
-	diff := make([]Diff, len(s))
+// ToNumber converts characters in a string that look like numbers into numbers.
+func (c *Confusables) ToNumber(s string) string {
+	s = c.ToASCII(s)
 
-	for i, r := range s {
-		diff[i] = Diff{
-			Rune: r,
-		}
-	}
-
-	return diff
-}
-
-func (c *Confusables) toASCII(s string) (string, []Diff) {
-	if isASCII(s) {
-		return s, noDiff(s)
-	}
-
-	var ascii strings.Builder
-
-	diffs := make([]Diff, 0, len(s))
+	var number strings.Builder
 
 	for _, r := range s {
-		diff := c.processRune(r)
-		diffs = append(diffs, *diff)
-
-		if diff.Confusable != nil {
-			ascii.WriteString(*diff.Confusable)
-		} else {
-			ascii.WriteRune(r)
+		switch strings.ToLower(string(r)) {
+		case "o":
+			r = '0'
+		case "i", "l", "!":
+			r = '1'
 		}
+
+		number.WriteRune(r)
 	}
 
-	return norm.NFKC.String(ascii.String()), diffs
+	return number.String()
 }
 
 func (c *Confusables) processRune(r rune) *Diff {
@@ -136,24 +121,27 @@ func (c *Confusables) processRune(r rune) *Diff {
 	return diff
 }
 
-// ToNumber converts characters in a string that look like numbers into numbers.
-func (c *Confusables) ToNumber(s string) string {
-	s = c.ToASCII(s)
-
-	var number strings.Builder
-
-	for _, r := range s {
-		switch strings.ToLower(string(r)) {
-		case "o":
-			r = '0'
-		case "i", "l", "!":
-			r = '1'
-		}
-
-		number.WriteRune(r)
+func (c *Confusables) toASCII(s string) (string, []Diff) {
+	if isASCII(s) {
+		return s, noDiff(s)
 	}
 
-	return number.String()
+	var ascii strings.Builder
+
+	diffs := make([]Diff, 0, len(s))
+
+	for _, r := range s {
+		diff := c.processRune(r)
+		diffs = append(diffs, *diff)
+
+		if diff.Confusable != nil {
+			ascii.WriteString(*diff.Confusable)
+		} else {
+			ascii.WriteRune(r)
+		}
+	}
+
+	return norm.NFKC.String(ascii.String()), diffs
 }
 
 // AddMapping allows custom mappings to be defined for a rune.
@@ -174,7 +162,8 @@ func IsConfusable(s1, s2 string) bool {
 	return ToSkeleton(s1) == ToSkeleton(s2)
 }
 
-// LoadMappings takes a mapping file from disk and loads them in.
+// LoadMappings reads r and loads in confusable mappings. Where a confusable already exists, this will override the
+// mapping.
 func LoadMappings(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 
@@ -225,23 +214,6 @@ func ParseLine(line string) (*ConfusableEntry, error) {
 		Source: sourceRunes[0],
 		Target: string(target),
 	}, nil
-}
-
-func codepointsToRunes(s string) ([]rune, error) {
-	codePoints := strings.Split(s, " ")
-
-	runes := make([]rune, 0, len(codePoints))
-
-	for _, unicodeCodePoint := range codePoints {
-		codePoint, err := strconv.ParseUint(unicodeCodePoint, base, bitsize)
-		if err != nil {
-			return nil, err
-		}
-
-		runes = append(runes, rune(codePoint))
-	}
-
-	return runes, nil
 }
 
 // ToASCII converts characters in a string to their ASCII equivalent if possible.
@@ -304,6 +276,23 @@ func ToSkeletonDiff(s string) []Diff {
 	return diffs
 }
 
+func codepointsToRunes(s string) ([]rune, error) {
+	codePoints := strings.Split(s, " ")
+
+	runes := make([]rune, 0, len(codePoints))
+
+	for _, unicodeCodePoint := range codePoints {
+		codePoint, err := strconv.ParseUint(unicodeCodePoint, base, bitsize)
+		if err != nil {
+			return nil, err
+		}
+
+		runes = append(runes, rune(codePoint))
+	}
+
+	return runes, nil
+}
+
 // Get the mapping between a rune and its confusable.
 func getDescriptionMapping(r rune, confusable *string) *Description {
 	if confusable == nil {
@@ -346,4 +335,16 @@ func isASCII(s string) bool {
 	}
 
 	return true
+}
+
+func noDiff(s string) []Diff {
+	diff := make([]Diff, len(s))
+
+	for i, r := range s {
+		diff[i] = Diff{
+			Rune: r,
+		}
+	}
+
+	return diff
 }
