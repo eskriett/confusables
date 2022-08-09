@@ -5,7 +5,10 @@ package confusables
 //go:generate go run scripts/build-tables.go > tables.go
 
 import (
-	"fmt"
+	"bufio"
+	"errors"
+	"io"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -14,9 +17,37 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+// ErrIgnoreLine is raised when processing a line which should be ignored.
+var ErrIgnoreLine = errors.New("line should be ignored")
+
+const (
+	base    = 16
+	bitsize = 64
+)
+
+// ConfusableEntry defines a parsed entry from a confusable mapping file.
+type ConfusableEntry struct {
+	Description Description
+	Source      rune
+	Target      string
+}
+
 // Confusables provides functions for identifying words that appear to be similar but use different characters.
 type Confusables struct {
 	removeMarks transform.Transformer
+}
+
+// Description describes a mapping for a confusable.
+type Description struct {
+	From string
+	To   string
+}
+
+// Diff details the mapping from a rune to its confusable if it exists.
+type Diff struct {
+	Confusable  *string
+	Description *Description
+	Rune        rune
 }
 
 // New creates a new instance of Confusables.
@@ -143,6 +174,76 @@ func IsConfusable(s1, s2 string) bool {
 	return ToSkeleton(s1) == ToSkeleton(s2)
 }
 
+// LoadMappings takes a mapping file from disk and loads them in.
+func LoadMappings(r io.Reader) error {
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		confusableEntry, err := ParseLine(scanner.Text())
+		if err != nil {
+			if errors.Is(err, ErrIgnoreLine) {
+				continue
+			}
+
+			return err
+		}
+
+		AddMappingWithDesc(confusableEntry.Source, confusableEntry.Target, confusableEntry.Description.From,
+			confusableEntry.Description.To)
+	}
+
+	return nil
+}
+
+// ParseLine takes a confusable line and returns a ConfusableEntry.
+// If a line should be skipped an ErrIgnoreLine error is raised.
+func ParseLine(line string) (*ConfusableEntry, error) {
+	// Remove BOM, skip comments and blank lines
+	line = strings.TrimPrefix(line, string([]byte{0xEF, 0xBB, 0xBF}))
+	if strings.HasPrefix(line, "#") || line == "" {
+		return nil, ErrIgnoreLine
+	}
+
+	// Extract source -> target mapping
+	fields := strings.Split(line, " ;\t")
+
+	sourceRunes, err := codepointsToRunes(fields[0])
+	if err != nil {
+		return nil, err
+	}
+
+	target, err := codepointsToRunes(fields[1])
+	if err != nil {
+		return nil, err
+	}
+
+	return &ConfusableEntry{
+		Description: Description{
+			From: strings.TrimSpace(strings.Split(strings.Split(fields[2], " → ")[1], " ) ")[1]),
+			To:   strings.TrimSpace(strings.Split(strings.Split(fields[2], " → ")[2], "#")[0]),
+		},
+		Source: sourceRunes[0],
+		Target: string(target),
+	}, nil
+}
+
+func codepointsToRunes(s string) ([]rune, error) {
+	codePoints := strings.Split(s, " ")
+
+	runes := make([]rune, 0, len(codePoints))
+
+	for _, unicodeCodePoint := range codePoints {
+		codePoint, err := strconv.ParseUint(unicodeCodePoint, base, bitsize)
+		if err != nil {
+			return nil, err
+		}
+
+		runes = append(runes, rune(codePoint))
+	}
+
+	return runes, nil
+}
+
 // ToASCII converts characters in a string to their ASCII equivalent if possible.
 func ToASCII(s string) string {
 	return New().ToASCII(s)
@@ -176,13 +277,6 @@ func ToSkeleton(s string) string {
 	return skeleton.String()
 }
 
-// Diff details the mapping from a rune to its confusable if it exists.
-type Diff struct {
-	Confusable  *string
-	Description string
-	Rune        rune
-}
-
 // ToSkeletonDiff returns a slice of Diff detailing the changes that have been
 // made within the string to reach its skeleton form.
 func ToSkeletonDiff(s string) []Diff {
@@ -211,9 +305,9 @@ func ToSkeletonDiff(s string) []Diff {
 }
 
 // Get the mapping between a rune and its confusable.
-func getDescriptionMapping(r rune, confusable *string) string {
+func getDescriptionMapping(r rune, confusable *string) *Description {
 	if confusable == nil {
-		return ""
+		return nil
 	}
 
 	rDesc := descriptions[string(r)]
@@ -224,7 +318,7 @@ func getDescriptionMapping(r rune, confusable *string) string {
 		for _, c := range nfd {
 			cDesc := descriptions[string(c)]
 			if cDesc == "" {
-				return ""
+				return nil
 			}
 
 			parts = append(parts, cDesc)
@@ -235,10 +329,13 @@ func getDescriptionMapping(r rune, confusable *string) string {
 
 	confusableDesc := descriptions[*confusable]
 	if confusableDesc == "" {
-		return ""
+		return nil
 	}
 
-	return fmt.Sprintf("%s → %s", rDesc, confusableDesc)
+	return &Description{
+		From: rDesc,
+		To:   confusableDesc,
+	}
 }
 
 func isASCII(s string) bool {

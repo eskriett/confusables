@@ -8,16 +8,15 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"text/template"
+
+	utils "github.com/eskriett/confusables"
 )
 
 var errDownload = errors.New("unable to download confusables")
 
 const (
-	base    = 16
-	bitsize = 64
-	url     = "https://www.unicode.org/Public/security/latest/confusables.txt"
+	url = "https://www.unicode.org/Public/security/latest/confusables.txt"
 )
 
 const sourceFile = `package confusables
@@ -39,7 +38,7 @@ var descriptions = map[string]string{
 
 func main() {
 	if err := buildTable(); err != nil {
-		log.Fatal("unable to build tables")
+		log.Fatal("unable to build tables: ", err)
 	}
 }
 
@@ -61,7 +60,11 @@ func buildTable() error {
 	// Extract confusables from downloaded file
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
-		parseLine(scanner.Text(), confusables, descriptions)
+		line := scanner.Text()
+
+		if err := parseLine(line, confusables, descriptions); err != nil && !errors.Is(err, utils.ErrIgnoreLine) {
+			return err
+		}
 	}
 
 	amendments, err := os.Open("scripts/amendments.txt")
@@ -73,7 +76,11 @@ func buildTable() error {
 
 	scanner = bufio.NewScanner(amendments)
 	for scanner.Scan() {
-		parseLine(scanner.Text(), confusables, descriptions)
+		line := scanner.Text()
+
+		if err := parseLine(line, confusables, descriptions); err != nil && !errors.Is(err, utils.ErrIgnoreLine) {
+			return err
+		}
 	}
 
 	// Output a mapping file
@@ -104,45 +111,22 @@ func buildTable() error {
 	return nil
 }
 
-func parseLine(line string, confusables map[string]string, descriptions map[string]string) {
-	// Remove BOM, skip comments and blank lines
-	line = strings.TrimPrefix(line, string([]byte{0xEF, 0xBB, 0xBF}))
-	if strings.HasPrefix(line, "#") || line == "" {
-		return
+func parseLine(line string, confusables map[string]string, descriptions map[string]string) error {
+	entry, err := utils.ParseLine(line)
+	if err != nil {
+		return err
 	}
 
-	// Extract source -> target mapping
-	fields := strings.Split(line, " ;\t")
-	source := codepointsToRunes(fields[0])
-	target := string(codepointsToRunes(fields[1]))
-
-	sourceStr := string(source)
+	sourceStr := string(entry.Source)
 	if _, ok := descriptions[sourceStr]; !ok {
-		descriptions[strconv.Quote(sourceStr)] =
-			strconv.Quote(strings.TrimSpace(strings.Split(strings.Split(fields[2], " → ")[1], " ) ")[1]))
+		descriptions[strconv.Quote(sourceStr)] = strconv.Quote(entry.Description.From)
 	}
 
-	if _, ok := descriptions[target]; !ok {
-		descriptions[strconv.Quote(target)] =
-			strconv.Quote(strings.TrimSpace(strings.Split(strings.Split(fields[2], " → ")[2], "#")[0]))
+	if _, ok := descriptions[entry.Target]; !ok {
+		descriptions[strconv.Quote(entry.Target)] = strconv.Quote(entry.Description.To)
 	}
 
-	confusables[fmt.Sprintf("0x%.8X", source[0])] = fmt.Sprintf("%+q", target)
-}
+	confusables[fmt.Sprintf("0x%.8X", entry.Source)] = fmt.Sprintf("%+q", entry.Target)
 
-func codepointsToRunes(s string) []rune {
-	codePoints := strings.Split(s, " ")
-
-	runes := make([]rune, 0, len(codePoints))
-
-	for _, unicodeCodePoint := range codePoints {
-		codePoint, err := strconv.ParseUint(unicodeCodePoint, base, bitsize)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		runes = append(runes, rune(codePoint))
-	}
-
-	return runes
+	return nil
 }

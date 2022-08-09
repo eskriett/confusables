@@ -88,25 +88,34 @@ func TestToASCIIDiff(t *testing.T) {
 		{"tòñ", "ton", []confusables.Diff{
 			{
 				Confusable:  nil,
-				Description: "",
+				Description: nil,
 				Rune:        't',
 			},
 			{
-				Confusable:  strPtr("o"),
-				Description: "LATIN SMALL LETTER O, COMBINING GRAVE ACCENT → LATIN SMALL LETTER O",
-				Rune:        'ò',
+				Confusable: strPtr("o"),
+				Description: &confusables.Description{
+					From: "LATIN SMALL LETTER O, COMBINING GRAVE ACCENT",
+					To:   "LATIN SMALL LETTER O",
+				},
+				Rune: 'ò',
 			},
 			{
-				Confusable:  strPtr("n"),
-				Description: "LATIN SMALL LETTER N, COMBINING TILDE → LATIN SMALL LETTER N",
-				Rune:        'ñ',
+				Confusable: strPtr("n"),
+				Description: &confusables.Description{
+					From: "LATIN SMALL LETTER N, COMBINING TILDE",
+					To:   "LATIN SMALL LETTER N",
+				},
+				Rune: 'ñ',
 			},
 		}},
 		{"❶", "1", []confusables.Diff{
 			{
-				Confusable:  strPtr("1"),
-				Description: "DINGBAT NEGATIVE CIRCLED DIGIT ONE → DIGIT ONE",
-				Rune:        '❶',
+				Confusable: strPtr("1"),
+				Description: &confusables.Description{
+					From: "DINGBAT NEGATIVE CIRCLED DIGIT ONE",
+					To:   "DIGIT ONE",
+				},
+				Rune: '❶',
 			},
 		}},
 	}
@@ -172,9 +181,12 @@ func TestToSkeletonDiff(t *testing.T) {
 				{Rune: 't'},
 				{Rune: 'u'},
 				{
-					Confusable:  strPtr("rn"),
-					Description: "LATIN SMALL LETTER M → LATIN SMALL LETTER R, LATIN SMALL LETTER N",
-					Rune:        'm',
+					Confusable: strPtr("rn"),
+					Description: &confusables.Description{
+						From: "LATIN SMALL LETTER M",
+						To:   "LATIN SMALL LETTER R, LATIN SMALL LETTER N",
+					},
+					Rune: 'm',
 				},
 			},
 		},
