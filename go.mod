@@ -1,10 +1,10 @@
 module github.com/eskriett/confusables
 
-go 1.18
+go 1.22.0
 
 require (
 	github.com/stretchr/testify v1.7.1
-	golang.org/x/text v0.3.7
+	golang.org/x/text v0.14.0
 )
 
 require (
