@@ -1,6 +1,7 @@
 package confusables_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/eskriett/confusables"
@@ -12,7 +13,15 @@ func TestNew(t *testing.T) {
 
 	c := confusables.New()
 
-	assert.IsType(t, &confusables.Confusables{}, c)
+	assert.IsType(t, &confusables.UnsafeConfusables{}, c)
+}
+
+func TestNewSafe(t *testing.T) {
+	t.Parallel()
+
+	c := confusables.NewSafe()
+
+	assert.IsType(t, &confusables.SafeConfusables{}, c)
 }
 
 func TestIsConfusable(t *testing.T) {
@@ -196,6 +205,29 @@ func TestToSkeletonDiff(t *testing.T) {
 		diff := confusables.ToSkeletonDiff(d.s)
 		assert.EqualValues(t, d.diff, diff)
 	}
+}
+
+// Test that the safe confusables operate correctly under a heavily concurrent
+// load.
+func TestSafeConfusables(t *testing.T) {
+	t.Parallel()
+
+	confusables := confusables.NewSafe()
+
+	var wg sync.WaitGroup
+
+	for range 100 {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			result := confusables.ToASCII("𝐞х⍺𝓂𝕡Іꬲ")
+			assert.Equal(t, "exarnple", result)
+		}()
+	}
+
+	wg.Wait()
 }
 
 func BenchmarkToASCII(b *testing.B) {

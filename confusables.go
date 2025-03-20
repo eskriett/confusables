@@ -10,6 +10,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"golang.org/x/text/runes"
@@ -32,10 +33,33 @@ type ConfusableEntry struct {
 	Target      string
 }
 
-// Confusables provides functions for identifying words that appear to be similar but use different characters.
-type Confusables struct {
+// Confusables provides functions for identifying words that appear to be
+// similar but use different characters.
+type Confusables interface {
+	ToASCII(s string) string
+	ToASCIIDiff(s string) (string, []Diff)
+	ToNumber(s string) string
+}
+
+// UnsafeConfusables is a single-threaded implementation of Confusables.
+//
+// Not safe to use in a concurrent context. Use [NewSafe] to return a
+// thread-safe implementation that can be used for concurrent access.
+type UnsafeConfusables struct {
 	removeMarks transform.Transformer
 }
+
+// Ensure [UnsafeConfusables] implements [Confusables].
+var _ Confusables = &UnsafeConfusables{}
+
+// SafeConfusables is a thread-safe implementation of Confusables.
+type SafeConfusables struct {
+	UnsafeConfusables
+	Lock sync.Mutex
+}
+
+// Ensure [SafeConfusables] implements [Confusables].
+var _ Confusables = &SafeConfusables{}
 
 // Description describes a mapping for a confusable.
 type Description struct {
@@ -51,25 +75,32 @@ type Diff struct {
 }
 
 // New creates a new instance of Confusables.
-func New() *Confusables {
-	return &Confusables{
+func New() *UnsafeConfusables {
+	return &UnsafeConfusables{
 		removeMarks: transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC),
 	}
 }
 
+// NewSafe creates a new instance of SafeConfusables.
+func NewSafe() *SafeConfusables {
+	return &SafeConfusables{
+		UnsafeConfusables: *New(),
+	}
+}
+
 // ToASCII converts characters in a string to their ASCII equivalent if possible.
-func (c *Confusables) ToASCII(s string) string {
+func (c *UnsafeConfusables) ToASCII(s string) string {
 	a, _ := c.toASCII(s)
 
 	return a
 }
 
-func (c *Confusables) ToASCIIDiff(s string) (string, []Diff) {
+func (c *UnsafeConfusables) ToASCIIDiff(s string) (string, []Diff) {
 	return c.toASCII(s)
 }
 
 // ToNumber converts characters in a string that look like numbers into numbers.
-func (c *Confusables) ToNumber(s string) string {
+func (c *UnsafeConfusables) ToNumber(s string) string {
 	s = c.ToASCII(s)
 
 	var number strings.Builder
@@ -88,7 +119,7 @@ func (c *Confusables) ToNumber(s string) string {
 	return number.String()
 }
 
-func (c *Confusables) processRune(r rune) *Diff {
+func (c *UnsafeConfusables) processRune(r rune) *Diff {
 	diff := &Diff{}
 
 	diff.Rune = r
@@ -100,7 +131,7 @@ func (c *Confusables) processRune(r rune) *Diff {
 	if v, ok := confusables[r]; ok {
 		c.removeMarks.Reset()
 
-		v, _, _ := transform.String(c.removeMarks, v)
+		v, _, _ = transform.String(c.removeMarks, v)
 
 		if isASCII(v) {
 			diff.Confusable = &v
@@ -121,7 +152,7 @@ func (c *Confusables) processRune(r rune) *Diff {
 	return diff
 }
 
-func (c *Confusables) toASCII(s string) (string, []Diff) {
+func (c *UnsafeConfusables) toASCII(s string) (string, []Diff) {
 	if isASCII(s) {
 		return s, noDiff(s)
 	}
@@ -142,6 +173,38 @@ func (c *Confusables) toASCII(s string) (string, []Diff) {
 	}
 
 	return norm.NFKC.String(ascii.String()), diffs
+}
+
+// ToASCII converts characters in a string to their ASCII equivalent if
+// possible.
+//
+// Thread-safe version.
+func (c *SafeConfusables) ToASCII(s string) string {
+	c.Lock.Lock()
+	defer c.Lock.Unlock()
+
+	return c.UnsafeConfusables.ToASCII(s)
+}
+
+// ToASCIIDiff converts characters in a string to their ASCII equivalent if
+// possible.
+//
+// Thread-safe version.
+func (c *SafeConfusables) ToASCIIDiff(s string) (string, []Diff) {
+	c.Lock.Lock()
+	defer c.Lock.Unlock()
+
+	return c.UnsafeConfusables.ToASCIIDiff(s)
+}
+
+// ToNumber converts characters in a string to their numeric values if possible.
+//
+// Thread-safe version.
+func (c *SafeConfusables) ToNumber(s string) string {
+	c.Lock.Lock()
+	defer c.Lock.Unlock()
+
+	return c.UnsafeConfusables.ToNumber(s)
 }
 
 // AddMapping allows custom mappings to be defined for a rune.
